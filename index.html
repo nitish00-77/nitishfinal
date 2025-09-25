@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>हरित - आपका कृषि सहायक</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@latest/dist/mobilenet.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-image: linear-gradient(rgba(240, 253, 244, 0.95), rgba(240, 253, 244, 0.95)), url('https://images.unsplash.com/photo-1499529112087-7cb3b7874405?q=80&w=2070&auto=format&fit=crop');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+        .glass { 
+            background: rgba(255, 255, 255, 0.75); 
+            backdrop-filter: blur(8px); 
+            -webkit-backdrop-filter: blur(8px); 
+        }
+        .assistant-btn-glow {
+            box-shadow: 0 0 20px 8px rgba(34, 197, 94, 0.8);
+            animation: pulse-glow 2s infinite cubic-bezier(0.4, 0, 0.6, 1);
+        }
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px 8px rgba(34, 197, 94, 0.8); }
+            50% { box-shadow: 0 0 10px 4px rgba(34, 197, 94, 0.4); }
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #22c55e;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-green-50 text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        
+        <header class="text-center mb-8">
+            <h1 class="text-4xl md:text-5xl font-bold text-green-800">हरित - आपका कृषि सहायक</h1>
+            <p class="text-gray-600 mt-2 text-lg">मौसम, फसल और खाद की जानकारी, अब आपकी उंगलियों पर।</p>
+        </header>
+
+        <!-- Message Box -->
+        <div id="messageBox" class="fixed top-4 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl shadow-lg z-50 text-white transition-opacity duration-300 opacity-0" role="alert"></div>
+        <div class="text-center mb-8">
+            <button id="assistantBtn" class="bg-green-600 text-white font-bold py-4 px-8 rounded-full shadow-lg hover:bg-green-700 focus:outline-none focus:ring-4 focus:ring-green-300 transition-all duration-300 transform hover:scale-105">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 inline-block mr-3" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4z" />
+                    <path d="M5.5 11.5a4.5 4.5 0 009 0H16a6 6 0 01-12 0h1.5z" />
+                    <path d="M10 18a3 3 0 003-3h-1.5a1.5 1.5 0 01-3 0H7a3 3 0 003 3z" />
+                </svg>
+                सहायक को सक्रिय करें
+            </button>
+            <p id="status" class="mt-4 text-gray-600 h-6 transition-opacity duration-300"></p>
+        </div>
+
+        <!-- userId display for multi-user apps -->
+        <div id="userIdDisplay" class="text-center mb-4 text-sm text-gray-500 hidden"></div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            
+            <!-- Manual Weather Information -->
+            <div class="glass p-6 rounded-2xl shadow-md border border-gray-200">
+                <h2 class="text-2xl font-bold text-green-700 mb-4 flex items-center gap-2">
+                   <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                    </svg>
+                    मौसम की जानकारी
+                </h2>
+                <div class="flex gap-2">
+                    <input type="text" id="cityInput" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="शहर का नाम दर्ज करें">
+                    <button id="getWeatherBtn" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition">खोजें</button>
+                </div>
+                <div id="weatherResult" class="mt-4 text-gray-700 space-y-2"></div>
+            </div>
+
+            <!-- Crop Recommendation -->
+            <div class="glass p-6 rounded-2xl shadow-md border border-gray-200">
+                <h2 class="text-2xl font-bold text-green-700 mb-4 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6H8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                    </svg>
+                    फसल सुझाव
+                </h2>
+                <div class="space-y-4">
+                    <div>
+                        <label for="soilType" class="block mb-1 font-medium">आपकी मिट्टी का प्रकार:</label>
+                        <select id="soilType" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                            <option value="काली">काली</option>
+                            <option value="जलोढ़">जलोढ़</option>
+                            <option value="लाल">लाल</option>
+                            <option value="लेटराइट">लेटराइट</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="season" class="block mb-1 font-medium">आपका मौसम:</label>
+                        <select id="season" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                            <option value="गर्मी">गर्मी</option>
+                            <option value="सर्दी">सर्दी</option>
+                            <option value="वर्षा">वर्षा</option>
+                        </select>
+                    </div>
+                    <button id="getCropBtn" class="w-full bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition">सुझाव प्राप्त करें</button>
+                </div>
+                <div id="cropResult" class="mt-4 text-gray-700"></div>
+            </div>
+            
+            <!-- Fertilizer Information -->
+            <div class="glass p-6 rounded-2xl shadow-md border border-gray-200">
+                <h2 class="text-2xl font-bold text-green-700 mb-4 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7.014A8.003 8.003 0 0117.657 18.657z" />
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 16.121A3 3 0 1014.12 11.88a3 3 0 00-4.242 4.242z" />
+                    </svg>
+                    खाद की जानकारी
+                </h2>
+                <div class="space-y-4">
+                    <div class="flex gap-2">
+                        <input type="text" id="cropNameInput" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="फसल का नाम दर्ज करें">
+                        <button id="getFertilizerBtn" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition">खोजें</button>
+                    </div>
+                </div>
+                <div id="fertilizerResult" class="mt-4 text-gray-700"></div>
+            </div>
+
+            <!-- New Module for Plant Diagnosis -->
+            <div class="glass p-6 rounded-2xl shadow-md border border-gray-200">
+                <h2 class="text-2xl font-bold text-green-700 mb-4 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    पौधे का निदान
+                </h2>
+                <div class="space-y-4">
+                    <p class="text-gray-600">पौधे की बीमारी या कीट की पहचान करने के लिए फोटो अपलोड करें।</p>
+                    <input type="file" id="plantPhotoInput" accept="image/*" class="w-full text-sm text-gray-500
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-full file:border-0
+                        file:text-sm file:font-semibold
+                        file:bg-green-50 file:text-green-700
+                        hover:file:bg-green-100 transition
+                    "/>
+                    <button id="diagnoseBtn" class="w-full bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition">
+                        निदान करें
+                    </button>
+                    <div id="diagnosisResult" class="mt-4 text-gray-700"></div>
+                </div>
+            </div>
+            
+            <!-- New card for Market Prices -->
+            <div class="glass p-6 rounded-2xl shadow-md border border-gray-200">
+                <h2 class="text-2xl font-bold text-green-700 mb-4 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 8h6m-5 3h4m1 1l1 1h4l-1-1zm-6-3l-1-1H3l1 1zm-3 4h18a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v2a2 2 0 002 2z" />
+                    </svg>
+                    बाजार मूल्य
+                </h2>
+                <p class="text-gray-600 mb-4">फसल और शहर के लिए नवीनतम मंडी मूल्य देखें।</p>
+                <div class="space-y-4">
+                    <div>
+                        <label for="marketCropSelect" class="block mb-1 font-medium">फसल चुनें:</label>
+                        <select id="marketCropSelect" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                            <option value="">-- एक फसल चुनें --</option>
+                            <option value="गेहूँ">गेहूँ</option>
+                            <option value="धान">धान</option>
+                            <option value="प्याज">प्याज</option>
+                            <option value="टमाटर">टमाटर</option>
+                            <option value="आलू">आलू</option>
+                            <option value="कपास">कपास</option>
+                            <option value="सरसों">सरसों</option>
+                            <option value="सोयाबीन">सोयाबीन</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="cityInputMarket" class="block mb-1 font-medium">शहर का नाम दर्ज करें:</label>
+                        <input type="text" id="cityInputMarket" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="उदा. दिल्ली">
+                    </div>
+                    <button id="getMarketPriceBtn" class="w-full bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition">
+                        मूल्य प्राप्त करें
+                    </button>
+                </div>
+                <div id="marketPriceResult" class="mt-4 text-gray-700"></div>
+            </div>
+
+            <!-- Card for Crop Total Cost -->
+            <div class="glass p-6 rounded-2xl shadow-md border border-gray-200">
+                <h2 class="text-2xl font-bold text-green-700 mb-4 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01M12 6v-1h4v1m-4 0h-4v-1h4m0-4.03c-3.132 0-6 2.688-6 6s2.868 6 6 6 6-2.688 6-6-2.868-6-6-6z" />
+                    </svg>
+                    फसल की कुल लागत
+                </h2>
+                <p class="text-gray-600 mb-4">फसल की कुल लागत की गणना करने के लिए नीचे दिए गए बटन पर क्लिक करें।</p>
+                <!-- This is a placeholder since this is a single-file application. -->
+                <button id="getCropCostBtn" class="w-full block text-center bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition">
+                    लागत की गणना करें
+                </button>
+            </div>
+             <!-- Saved Diagnoses Section -->
+            <div class="glass p-6 rounded-2xl shadow-md border border-gray-200 col-span-1 md:col-span-2 lg:col-span-3">
+                <h2 class="text-2xl font-bold text-green-700 mb-4 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                    </svg>
+                    सहेजे गए निदान
+                </h2>
+                <p class="text-sm text-gray-600 mb-4">पिछले निदानों को यहां देखें।</p>
+                <div id="savedDiagnosesList" class="space-y-4">
+                    <!-- Diagnoses will be dynamically inserted here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Firestore debugging
+        setLogLevel('debug');
+
+        // --- Firebase Initialization and Auth ---
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        
+        let userId = null;
+        const savedDiagnosesList = document.getElementById('savedDiagnosesList');
+        const userIdDisplay = document.getElementById('userIdDisplay');
+
+        // Listen for auth state changes
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                userId = user.uid;
+                userIdDisplay.textContent = `उपयोगकर्ता ID: ${userId}`;
+                userIdDisplay.classList.remove('hidden');
+                console.log("Firebase initialized and user authenticated:", userId);
+                // Once authenticated, set up the real-time listener
+                listenForDiagnoses();
+            } else {
+                console.log("No user, signing in with custom token or anonymously.");
+                try {
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                } catch (error) {
+                    console.error("Authentication failed:", error);
+                    showMessage("प्रमाणीकरण विफल रहा, कृपया पुनः प्रयास करें।", "error");
+                }
+            }
+        });
+
+        // --- Firestore Functions ---
+        const saveDiagnosisToFirestore = async (diagnosisData) => {
+            if (!userId) {
+                showMessage("उपयोगकर्ता प्रमाणित नहीं है, डेटा सहेजा नहीं जा सका।", "error");
+                return;
+            }
+            try {
+                const diagnosesCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/diagnoses`);
+                await addDoc(diagnosesCollectionRef, {
+                    ...diagnosisData,
+                    timestamp: new Date().toISOString()
+                });
+                showMessage("निदान सफलतापूर्वक सहेजा गया!", "success");
+            } catch (e) {
+                console.error("Error adding document: ", e);
+                showMessage("निदान सहेजते समय त्रुटि हुई।", "error");
+            }
+        };
+
+        const listenForDiagnoses = () => {
+             if (!userId) {
+                 console.log("listenForDiagnoses: userId not available yet.");
+                 return;
+             }
+             const q = query(collection(db, `artifacts/${appId}/users/${userId}/diagnoses`));
+            
+            onSnapshot(q, (snapshot) => {
+                savedDiagnosesList.innerHTML = '';
+                if (snapshot.empty) {
+                    savedDiagnosesList.innerHTML = `<p class="text-gray-500">कोई सहेजा गया निदान नहीं है।</p>`;
+                    return;
+                }
+                
+                // Fetch all documents and sort client-side to avoid index errors
+                const diagnoses = [];
+                snapshot.forEach((doc) => {
+                    diagnoses.push(doc.data());
+                });
+
+                // Sort by timestamp in descending order
+                diagnoses.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+                diagnoses.forEach((data) => {
+                    const diagnosisCard = document.createElement('div');
+                    diagnosisCard.className = 'glass p-4 rounded-xl shadow-sm border border-gray-200';
+                    diagnosisCard.innerHTML = `
+                        <p class="font-bold text-green-700">${data.name}</p>
+                        <p class="text-sm text-gray-600">समय: ${new Date(data.timestamp).toLocaleString('hi-IN')}</p>
+                        <p class="mt-2 text-sm text-gray-800">${data.chemical ? `रासायनिक समाधान: ${data.chemical}` : ''}</p>
+                        <p class="mt-1 text-sm text-gray-800">${data.organic ? `जैविक समाधान: ${data.organic}` : ''}</p>
+                    `;
+                    savedDiagnosesList.appendChild(diagnosisCard);
+                });
+            }, (error) => {
+                 console.error("Firestore onSnapshot error:", error);
+                 showMessage("डेटा लोड करते समय त्रुटि हुई।", "error");
+            });
+        };
+        
+        // DOM elements
+        const cityInput = document.getElementById('cityInput');
+        const getWeatherBtn = document.getElementById('getWeatherBtn');
+        const weatherResult = document.getElementById('weatherResult');
+        const soilType = document.getElementById('soilType');
+        const season = document.getElementById('season');
+        const getCropBtn = document.getElementById('getCropBtn');
+        const cropResult = document.getElementById('cropResult');
+        const cropNameInput = document.getElementById('cropNameInput');
+        const getFertilizerBtn = document.getElementById('getFertilizerBtn');
+        const fertilizerResult = document.getElementById('fertilizerResult');
+        const plantPhotoInput = document.getElementById('plantPhotoInput');
+        const diagnoseBtn = document.getElementById('diagnoseBtn');
+        const diagnosisResult = document.getElementById('diagnosisResult');
+        const marketCropSelect = document.getElementById('marketCropSelect');
+        const cityInputMarket = document.getElementById('cityInputMarket');
+        const getMarketPriceBtn = document.getElementById('getMarketPriceBtn');
+        const marketPriceResult = document.getElementById('marketPriceResult');
+        const assistantBtn = document.getElementById('assistantBtn');
+        const status = document.getElementById('status');
+        const messageBox = document.getElementById('messageBox');
+        const getCropCostBtn = document.getElementById('getCropCostBtn');
+        // NOTE: Replace with your OpenWeatherMap API key if you have one.
+        const API_KEY = "2aa75c3847bdda09f365c8b688902505";
+        
+        // --- AI Model Loading ---
+        let mobilenetModel;
+        async function loadModel() {
+            try {
+                showMessage("AI मॉडल लोड हो रहा है...", "info");
+                const loadingStart = Date.now();
+                mobilenetModel = await mobilenet.load();
+                const loadingTime = (Date.now() - loadingStart) / 1000;
+                showMessage(`AI मॉडल सफलतापूर्वक लोड हुआ! (${loadingTime.toFixed(2)}s)`, "success");
+            } catch (e) {
+                showMessage("AI मॉडल लोड करते समय त्रुटि हुई।", "error");
+                console.error("Error loading model:", e);
+            }
+        }
+        loadModel();
+
+        // --- Helper: Clean city input (remove unwanted symbols like ।, |, , .) ---
+        function cleanCityName(input) {
+            return input
+                .replace(/[।|.,]/g, "") // remove danda, pipe, comma, dot
+                .trim();                // remove spaces
+        }
+
+        // --- डेटा (Data) ---
+        // फसल और मौसम के अनुसार सिफारिशें
+        const cropRecommendations = { "काली,गर्मी": "कपास, सोयाबीन, मूंगफली, सूरजमुखी, ज्वार, बाजरा, मूँग, उड़द, तिल, टमाटर, बैंगन, भिन्डी", "जलोढ़,गर्मी": "मक्का, ज्वार, बाजरा, मूँग, उड़द, तिल, तरबूज, खरबूजा, टमाटर, बैंगन, भिन्डी, लौकी, करेला, ककड़ी", "काली,वर्षा": "कपास, सोयाबीन, मूँगफली, सूरजमुखी, मक्का, ज्वार, अरहर, तूर दाल", "लाल,सर्दी": "गेहूँ, जौ, चना, मटर, मसूर, सरसों, अलसी,गाजर, मूली, पालक, मेथी, पत्तागोभी, फूलगोभी", "लेटराइट,गर्मी": "काजू, चाय, नारियल, टमाटर, भिन्डी, करेला, लौकी, ककड़ी, तरबूज, खरबूजा, पपीता, आम, अमरूद, मूँग, उड़द, सूरजमुखी, तिल, मक्का", "काली,सर्दी": "गेहूँ, जौ, चना, मसूर, सरसों, अलसी, जीरा", "लाल,गर्मी": "तरबूज, खरबूज, ककड़ी, लोबिया, भिंडी, टमाटर, बैंगन, मिर्च, सूरजमुखी", "लाल,वर्षा": "मक्का, ज्वार, बाजरा, सोयाबीन, मूँग, उड़द, अरहर, तूर, मूँगफली, कपास", "जलोढ़,सर्दी": "गेहूँ, जौ, चना, मसूर, सरसों, अलसी, मटर, आलू, प्याज़, गाजर, मूली, पालक", "जलोढ़,वर्षा": "धान, मक्का, ज्वार, बाजरा, अरहर, मूँग, उड़द, सोयाबीन, मूँगफली, कपास, गन्ना", };
+        
+        // सामान्य खाद जानकारी
+        const fertilizerData ={"गेहूँ": "गेहूँ: यूरिया 120 किग्रा (₹9 प्रति किलो ग्राम), डीएपी 60 किग्रा P₂O₅ (₹48 प्रति किलो ग्राम), म्यूरेट ऑफ पोटाश 40 किग्रा K₂O (₹28 प्रति किलो ग्राम) प्रति एकड़। पानी: हर बीस-पच्चीस दिन पर सिंचाई।", "धान": "धान: यूरिया 100 किग्रा N (₹9 प्रति किलो ग्राम), डीएपी 50 किग्रा P₂O₅ (₹48 प्रति किलो ग्राम), पोटाश 40 किग्रा K₂O (₹28 प्रति किलो ग्राम) प्रति एकड़। पानी: खेत में हमेशा 2-3 इंच पानी रखें।", "मक्का": "मक्का: यूरिया 80-100 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 50 किग्रा P₂O₅(₹48 प्रति किलो ग्राम), पोटाश 30 किग्रा K₂O(₹28 प्रति किलो ग्राम) प्रति एकड़। पानी: हर 10-12 दिन पर सिंचाई।", "चना": "चना: डीएपी 40 किग्रा P₂O₅(₹48 प्रति किलो ग्राम), जिप्सम 200 (₹10 प्रति किलो ग्राम) किग्रा प्रति एकड़। पानी: दो-तीन बार हल्की सिंचाई पर्याप्त।", "सोयाबीन": "सोयाबीन: डीएपी 40 किग्रा P₂O₅(₹48 प्रति किलो ग्राम), पोटाश 30 किग्रा K₂O(₹28 प्रति किलो ग्राम), सल्फर 20 किग्रा (₹20 प्रति किलो ग्राम) प्रति एकड़। पानी: 12-15 दिन पर सिंचाई।", "कपास": "कपास: यूरिया 80 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 40 किग्रा P₂O₅(₹48 प्रति किलो ग्राम), पोटाश 40 किग्रा K₂O(₹428 प्रति किलो ग्राम) प्रति एकड़। पानी: हर 15-20 दिन पर सिंचाई।", "सरसों": "सरसों: यूरिया 60 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 40 किग्रा P₂O₅(₹48 प्रति किलो ग्राम), सल्फर 20 किग्रा (₹20 प्रति किलो ग्राम)प्रति एकड़। पानी: 3-4 बार हल्की सिंचाई।", "जौ": "जौ: यूरिया 40 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 20 किग्रा P₂O₅(₹48 प्रति किलो ग्राम) प्रति एकड़। पानी: 2-3 सिंचाई।", "मसूर": "मसूर: डीएपी 30 किग्रा P₂O₅(₹9 प्रति किलो ग्राम), जिप्सम 100 किग्रा(₹10 प्रति किलो ग्राम) प्रति एकड़। पानी: 1-2 हल्की सिंचाई।", "मटर": "मटर: डीएपी 40 किग्रा P₂O₅(₹9 प्रति किलो ग्राम), यूरिया 20 किग्रा N (₹9 प्रति किलो ग्राम)प्रति एकड़। पानी: 3-4 सिंचाई।", "गन्ना": "गन्ना: यूरिया 250 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 100 किग्रा P₂O₅(₹48 प्रति किलो ग्राम), पोटाश 120 किग्रा K₂O (₹28 प्रति किलो ग्राम)प्रति एकड़। पानी: हर 7-10 दिन पर सिंचाई।", "अरहर": "अरहर: डीएपी 40 किग्रा P₂O₅(₹48 प्रति किलो ग्राम), सल्फर 20 किग्रा (₹20 प्रति किलो ग्राम)प्रति एकड़। पानी: 2-3 बार सिंचाई।", "मूंगफली": "मूंगफली: जिप्सम 200 किग्रा(₹10 प्रति किलो ग्राम), डीएपी 40 किग्रा P₂O₅(₹48 प्रति किलो ग्राम) प्रति एकड़। पानी: हर 12-15 दिन पर सिंचाई।", "उड़द": "उड़द: डीएपी 30 किग्रा P₂O₅(₹48 प्रति किलो ग्राम) प्रति एकड़। पानी: 1-2 बार सिंचाई।", "तिल": "तिल: डीएपी 25 किग्रा P₂O₅(₹48 प्रति किलो ग्राम) प्रति एकड़। पानी: जरूरत अनुसार हल्की सिंचाई।", "ज्वार": "यूरिया 40 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 20 किग्रा P₂O₅ (₹48 प्रति किलो ग्राम)प्रति एकड़। पानी: 2-3 सिंचाई।", "बाजरा": "बाजरा: यूरिया 40 किग्रा N(₹9 प्रति किलो ग्राम) प्रति एकड़। पानी: 2-3 सिंचाई।", "टमाटर": "टमाटर: यूरिया 60 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 50 किग्रा P₂O₅(₹48 प्रति किलो ग्राम), पोटाश 40 किग्रा K₂O (₹28 प्रति किलो ग्राम)प्रति एकड़। पानी: हर 7 दिन पर सिंचाई।", "बैंगन": "बैंगन: यूरिया 60 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 40 किग्रा P₂O₅(₹48 प्रति किलो ग्राम), पोटाश 40 किग्रा K₂O(₹28 प्रति किलो ग्राम) प्रति एकड़। पानी: हर 8-10 दिन पर सिंचाई।", "आलू": "आलू: यूरिया 100 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 60 किग्रा P₂O₅(₹48 प्रति किलो ग्राम), पोटाश 80 किग्रा K₂O(₹28 प्रति किलो ग्राम) प्रति एकड़। पानी: हर 10 दिन पर सिंचाई।", "प्याज़": "प्याज़: यूरिया 80 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 40 किग्रा P₂O₅(₹48 प्रति किलो ग्राम), पोटाश 40 किग्रा K₂O(₹28 प्रति किलो ग्राम) प्रति एकड़। पानी: हर 7 दिन पर सिंचाई।", "गाजर": "गाजर: डीएपी 40 किग्रा P₂O₅(₹48 प्रति किलो ग्राम), पोटाश 40 किग्रा K₂O (₹28 प्रति किलो ग्राम)प्रति एकड़। पानी: हर 10 दिन पर सिंचाई।", "मूली": "मूली: डीएपी 40 किग्रा P₂O₅(₹48 प्रति किलो ग्राम) प्रति एकड़। पानी: 7-10 दिन पर सिंचाई।", "पालक": "पालक: यूरिया 20 किग्रा N(₹9 प्रति किलो ग्राम) प्रति एकड़। पानी: हर 6-7 दिन पर सिंचाई।", "मेथी": "मेथी: डीएपी 20 किग्रा P₂O₅(₹48 प्रति किलो ग्राम) प्रति एकड़। पानी: हर 8-10 दिन पर सिंचाई।", "फूलगोभी": "फूलगोभी: यूरिया 40 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 40 किग्रा P₂O₅(₹48 प्रति किलो ग्राम), पोटाश 40 किग्रा K₂O (₹28 प्रति किलो ग्राम)प्रति एकड़। पानी: हर 7-8 दिन पर सिंचाई।", "पत्तागोभी": "पत्तागोभी: यूरिया 40 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 40 किग्रा P₂O₅(₹48 प्रति किलो ग्राम), पोटाश 40 किग्रा K₂O (₹28 प्रति किलो ग्राम)प्रति एकड़। पानी: हर 7-8 दिन पर सिंचाई।", "खीरा": "खीरा: यूरिया 30 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 30 किग्रा P₂O₅(₹48 प्रति किलो ग्राम) प्रति एकड़। पानी: हर 7 दिन पर सिंचाई।", "तरबूज": "तरबूज: यूरिया 30 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 30 किग्रा P₂O₅(₹48 प्रति किलो ग्राम) प्रति एकड़। पानी: हर 7 दिन पर सिंचाई।", "खरबूजा": "खरबूजा: यूरिया 30 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 30 किग्रा P₂O₅(₹48 प्रति किलो ग्राम) प्रति एकड़। पानी: हर 7 दिन पर सिंचाई।", "पपीता": "पपीता: यूरिया 250 ग्राम N(₹9 प्रति किलो ग्राम), डीएपी 150 ग्राम P₂O₅(₹48 प्रति किलो ग्राम), पोटाश 200 ग्राम K₂O(₹28 प्रति किलो ग्राम) प्रति पौधा। पानी: हफ्ते में एक बार।", "आम": "आम: यूरिया 1-2 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 1 किग्रा P₂O₅(₹48 प्रति किलो ग्राम), पोटाश 1 किग्रा K₂O(₹28 प्रति किलो ग्राम) प्रति पौधा। पानी: गर्मी में हर 15 दिन पर।", "अमरूद": "अमरूद: यूरिया 500 ग्राम N(₹9 प्रति किलो ग्राम), डीएपी 250 ग्राम P₂O₅(₹48 प्रति किलो ग्राम), पोटाश 250 ग्राम K₂O (₹28 प्रति किलो ग्राम)प्रति पौधा। पानी: 15 दिन पर सिंचाई।", "अंगूर": "अंगूर: यूरिया 80 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 60 किग्रा P₂O₅(₹48 प्रति किलो ग्राम), पोटाश 60 किग्रा K₂O(₹28 प्रति किलो ग्राम) प्रति एकड़। पानी: हर 10-12 दिन पर सिंचाई।", "केला": "केला: यूरिया 150 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 100 किग्रा P₂O₅(₹48 प्रति किलो ग्राम), पोटाश 200 किग्रा K₂O(₹28 प्रति किलो ग्राम) प्रति एकड़। पानी: हर 7-8 दिन पर सिंचाई।", "चाय": "चाय: यूरिया 60 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 40 किग्रा P₂O₅ (₹48 प्रति किलो ग्राम)प्रति एकड़। पानी: आवश्यकता अनुसार।", "कॉफी": "कॉफी: यूरिया 50 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 40 किग्रा P₂O₅(₹48 प्रति किलो ग्राम) प्रति एकड़। पानी: आवश्यकता अनुसार।", "काजू": "काजू: डीएपी 40 किग्रा P₂O₅ (₹48 प्रति किलो ग्राम)प्रति एकड़। पानी: गर्मी में 15-20 दिन पर सिंचाई।", "नारियल": "नारियल: यूरिया 500 ग्राम N(₹9 प्रति किलो ग्राम), डीएपी 320 ग्राम P₂O₅(₹48 प्रति किलो ग्राम), पोटाश 1200 ग्राम K₂O (₹28 प्रति किलो ग्राम)प्रति पेड़। पानी: हर 7 दिन पर।", "अलसी": "अलसी: यूरिया 30 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 20 किग्रा P₂O₅(₹48 प्रति किलो ग्राम) प्रति एकड़। पानी: 2-3 बार सिंचाई।", "जीरा": "जीरा: डीएपी 20 किग्रा P₂O₅(₹48 प्रति किलो ग्राम) प्रति एकड़। पानी: 2-3 सिंचाई।", "लौकी": "लौकी: यूरिया 30 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 30 किग्रा P₂O₅(₹48 प्रति किलो ग्राम) प्रति एकड़। पानी: 6-7 दिन पर सिंचाई।", "करेला": "करेला: यूरिया 30 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 30 किग्रा P₂O₅(₹48 प्रति किलो ग्राम) प्रति एकड़। पानी: हर 6-7 दिन पर।", "मिर्च": "मिर्च: यूरिया 60 किग्रा N(₹9 प्रति किलो ग्राम), डीएपी 50 किग्रा P₂O₅(₹48 प्रति किलो ग्राम), पोटाश 40 किग्रा K₂O(₹28 प्रति किलो ग्राम) प्रति एकड़। पानी: हर 7-8 दिन पर सिंचाई।"}
+
+        // एनपीके-आधारित खाद जानकारी (सिम्युलेटेड)
+        const npkFertilizerData = {
+            "धान": {
+                "high_N": "धान की फसल के लिए नाइट्रोजन अधिक है, इसलिए यूरिया का उपयोग कम करें। 50 किग्रा यूरिया, 50 किग्रा डीएपी और 40 किग्रा पोटाश प्रति एकड़ का उपयोग करें।",
+                "low_N": "धान की फसल के लिए नाइट्रोजन कम है। 120 किग्रा यूरिया, 50 किग्रा डीएपी और 40 किग्रा पोटाश प्रति एकड़ का उपयोग करें।",
+                "high_P": "धान की फसल के लिए फॉस्फोरस अधिक है, इसलिए डीएपी का उपयोग कम करें। 100 किग्रा यूरिया, 20 किग्रा डीएपी और 40 किग्रा पोटाश प्रति एकड़ का उपयोग करें।",
+                "low_P": "धान की फसल के लिए फॉस्फोरस कम है। 100 किग्रा यूरिया, 80 किग्रा डीएपी और 40 किग्रा पोटाश प्रति एकड़ का उपयोग करें।",
+                "high_K": "धान की फसल के लिए पोटेशियम अधिक है, इसलिए पोटाश का उपयोग कम करें। 100 किग्रा यूरिया, 50 किग्रा डीएपी और 20 किग्रा पोटाश प्रति एकड़ का उपयोग करें।",
+                "low_K": "धान की फसल के लिए पोटेशियम कम है। 100 किग्रा यूरिया, 50 किग्रा डीएपी और 60 किग्रा पोटाश प्रति एकड़ का उपयोग करें।",
+                "balanced": "आपकी मिट्टी में पोषक तत्व संतुलित हैं। धान के लिए 100 किग्रा यूरिया, 50 किग्रा डीएपी और 40 किग्रा पोटाश प्रति एकड़ का उपयोग करें।"
+            },
+            "गेहूँ": {
+                "high_N": "गेहूं के लिए नाइट्रोजन अधिक है। 80 किग्रा यूरिया, 60 किग्रा डीएपी और 40 किग्रा पोटाश प्रति एकड़ का उपयोग करें।",
+                "low_N": "गेहूं के लिए नाइट्रोजन कम है। 150 किग्रा यूरिया, 60 किग्रा डीएपी और 40 किग्रा पोटाश प्रति एकड़ का उपयोग करें।",
+                "high_P": "गेहूं के लिए फॉस्फोरस अधिक है। 120 किग्रा यूरिया, 30 किग्रा डीएपी और 40 किग्रा पोटाश प्रति एकड़ का उपयोग करें।",
+                "low_P": "गेहूं के लिए फॉस्फोरस कम है। 120 किग्रा यूरिया, 90 किग्रा डीएपी और 40 किग्रा पोटाश प्रति एकड़ का उपयोग करें।",
+                "high_K": "गेहूं के लिए पोटेशियम अधिक है। 120 किग्रा यूरिया, 60 किग्रा डीएपी और 20 किग्रा पोटाश प्रति एकड़ का उपयोग करें।",
+                "low_K": "गेहूं के लिए पोटेशियम कम है। 120 किग्रा यूरिया, 60 किग्रा डीएपी और 60 किग्रा पोटाश प्रति एकड़ का उपयोग करें।",
+                "balanced": "आपकी मिट्टी में पोषक तत्व संतुलित हैं। गेहूं के लिए 120 किग्रा यूरिया, 60 किग्रा डीएपी और 40 किग्रा पोटाश प्रति एकड़ का उपयोग करें।"
+            }
+        };
+
+        // बाजार मूल्य
+        const marketPrices = {
+            "गेहूँ": { "दिल्ली": "₹ 2,450 / क्विंटल", "लखनऊ": "₹ 2,380 / क्विंटल", "कानपुर": "₹ 2,350 / क्विंटल" },
+            "धान": { "पानीपत": "₹ 2,100 / क्विंटल", "अंबाला": "₹ 2,050 / क्विंटल", "भोपाल": "₹ 2,080 / क्विंटल" },
+            "प्याज": { "मुंबई": "₹ 2,800 / क्विंटल", "इंदौर": "₹ 2,650 / क्विंटल", "नासिक": "₹ 2,900 / क्विंटल", "दिल्ली": "₹ 2,750 / क्विंटल" },
+            "टमाटर": { "पुणे": "₹ 3,500 / क्विंटल", "बेंगलुरु": "₹ 3,300 / क्विंटल", "हैदराबाद": "₹ 3,450 / क्विंटल", "दिल्ली": "₹ 3,400 / क्विंटल" },
+            "आलू": { "कोलकाता": "₹ 2,150 / क्विंटल", "कानपुर": "₹ 2,000 / क्विंटल", "आगरा": "₹ 2,050 / क्विंटल", "दिल्ली": "₹ 2,100 / क्विंटल" },
+            "कपास": { "अहमदाबाद": "₹ 6,200 / क्विंटल", "इंदौर": "₹ 6,150 / क्विंटल", "भोपाल": "₹ 6,250 / क्विंटल" },
+            "सरसों": { "जयपुर": "₹ 5,850 / क्विंटल", "दिल्ली": "₹ 5,700 / क्विंटल", "लखनऊ": "₹ 5,750 / क्विंटल" },
+            "सोयाबीन": { "इंदौर": "₹ 4,500 / क्विंटल", "नागपुर": "₹ ₹4,450 / क्विंटल", "अकोला": "₹ 4,400 / क्विंटल" }
+        };
+        
+        // AI मॉडल के परिणामों को हिंदी में अनुवाद करने और समाधान प्रदान करने के लिए डेटा
+        const aiDiseaseMappings = {
+            'Apple': {
+                'Apple scab': { name_hi: 'सेब का स्कैब रोग', chemical: 'रासायनिक समाधान: मैन्कोज़ेब या कैप्टन युक्त फफूंदीनाशक का छिड़काव करें।', organic: 'जैविक समाधान: नीम तेल या कॉपर सल्फेट युक्त मिश्रण का उपयोग करें।' },
+                'Black rot': { name_hi: 'सेब का ब्लैक रॉट', chemical: 'रासायनिक समाधान: माइक्लोब्यूटानिल या फ़्लुज़िनम जैसे फफूंदीनाशक का छिड़काव करें।', organic: 'जैविक समाधान: ट्राइकोडर्मा विरिडे का उपयोग करें और संक्रमित हिस्सों को हटा दें।' },
+                'Cedar apple rust': { name_hi: 'सेब का सेडार रस्ट', chemical: 'रासायनिक समाधान: माइक्लोब्यूटानिल का छिड़काव करें।', organic: 'जैविक समाधान: रोग-प्रतिरोधी किस्में उगाएं और प्रभावित पत्तियों को हटा दें।' },
+                'healthy': { name_hi: 'स्वस्थ सेब का पौधा', chemical: 'आपका पौधा स्वस्थ है। इसे स्वस्थ बनाए रखने के लिए नियमित रूप से पानी और खाद देते रहें।', organic: '' }
+            },
+            'Cherry': {
+                'Powdery mildew': { name_hi: 'चेरी का चूर्णी फफूंदी', chemical: 'रासायनिक समाधान: सल्फर-आधारित फफूंदीनाशक का उपयोग करें।', organic: 'जैविक समाधान: बेकिंग सोडा का घोल या नीम तेल का छिड़काव करें।' },
+                'healthy': { name_hi: 'स्वस्थ चेरी का पौधा', chemical: 'आपका पौधा स्वस्थ है।', organic: '' }
+            },
+            'Corn': {
+                'Common rust': { name_hi: 'मक्के का सामान्य रस्ट', chemical: 'रासायनिक समाधान: प्रोपिकोनाज़ोल जैसे फफूंदीनाशक का छिड़काव करें।', organic: 'जैविक समाधान: रोग-प्रतिरोधी किस्में उगाएं।' },
+                'healthy': { name_hi: 'स्वस्थ मक्के का पौधा', chemical: 'आपका पौधा स्वस्थ है।', organic: '' }
+            },
+             'Grape': {
+                'Black rot': { name_hi: 'अंगूर का ब्लैक रॉट', chemical: 'रासायनिक समाधान: माइक्लोब्यूटानिल या मैनकोजेब का उपयोग करें।', organic: 'जैविक समाधान: फफूंदीनाशक जीवाणु (जैसे बैसिलस सबटिलिस) का छिड़काव करें।' },
+                'Leaf blight (Isariopsis Leaf Spot)': { name_hi: 'अंगूर का पत्ता झुलसना', chemical: 'रासायनिक समाधान: कॉपर ऑक्सीक्लोराइड का छिड़काव करें।', organic: 'जैविक समाधान: बोर्डो मिश्रण का उपयोग करें।' },
+                'healthy': { name_hi: 'स्वस्थ अंगूर का पौधा', chemical: 'आपका पौधा स्वस्थ है।', organic: '' }
+            },
+            'Potato': {
+                'Early blight': { name_hi: 'आलू का अर्ली ब्लाइट', chemical: 'रासायनिक समाधान: क्लोरोथालोनिल या मैनकोजेब का उपयोग करें।', organic: 'जैविक समाधान: ट्राइकोडर्मा विरिडे का उपयोग करें और प्रभावित पत्तियों को हटा दें।' },
+                'Late blight': { name_hi: 'आलू का लेट ब्लाइट', chemical: 'रासायनिक समाधान: मेटलैक्सिल या क्लोरोथालोनिल का उपयोग करें।', organic: 'जैविक समाधान: नीम तेल का छिड़काव करें।' },
+                'healthy': { name_hi: 'स्वस्थ आलू का पौधा', chemical: 'आपका पौधा स्वस्थ है।', organic: '' }
+            },
+            'Strawberry': {
+                'Leaf scorch': { name_hi: 'स्ट्रॉबेरी का पत्ता झुलसना', chemical: 'रासायनिक समाधान: फेनहेक्सामिड या कैप्टान का छिड़काव करें।', organic: 'जैविक समाधान: नीम तेल या ट्राइकोडर्मा का उपयोग करें।' },
+                'healthy': { name_hi: 'स्वस्थ स्ट्रॉबेरी का पौधा', chemical: 'आपका पौधा स्वस्थ है।', organic: '' }
+            },
+            'Tomato': {
+                'Bacterial spot': { name_hi: 'टमाटर का बैक्टीरियल स्पॉट', chemical: 'रासायनिक समाधान: कॉपर-आधारित फफूंदीनाशक का छिड़काव करें।', organic: 'जैविक समाधान: नीम तेल का घोल बनाकर छिड़काव करें।' },
+                'Early blight': { name_hi: 'टमाटर का अर्ली ब्लाइट', chemical: 'रासायनिक समाधान: क्लोरोथालोनिल या मैनकोजेब का उपयोग करें।', organic: 'जैविक समाधान: ट्राइकोडर्मा का उपयोग करें और प्रभावित पत्तियों को हटा दें।' },
+                'healthy': { name_hi: 'स्वस्थ टमाटर का पौधा', chemical: 'आपका पौधा स्वस्थ है।', organic: '' }
+            },
+            'Pepper bell': {
+                 'Bacterial spot': { name_hi: 'शिमला मिर्च का बैक्टीरियल स्पॉट', chemical: 'रासायनिक समाधान: कॉपर-आधारित फफूंदीनाशक का छिड़काव करें।', organic: 'जैविक समाधान: नीम तेल का उपयोग करें।' },
+                 'healthy': { name_hi: 'स्वस्थ शिमला मिर्च का पौधा', chemical: 'आपका पौधा स्वस्थ है।', organic: '' }
+            }
+        };
+
+        const getDiagnosisFromLabels = (labels) => {
+            const results = labels.map(label => {
+                const parts = label.className.split('___');
+                const plant = parts[0];
+                const disease = parts.length > 1 ? parts[1].replace(/_/g, ' ') : 'healthy';
+
+                let diagnosis = {
+                    name_hi: 'कोई बीमारी नहीं मिली',
+                    chemical: 'मुझे इस तस्वीर में कोई स्पष्ट बीमारी या कीट नहीं मिला। कृपया एक बेहतर तस्वीर अपलोड करें या हमारे सहायक से बात करें।',
+                    organic: ''
+                };
+                
+                // Try to find a match in our curated data
+                const plantData = aiDiseaseMappings[plant];
+                if (plantData) {
+                    const diseaseData = plantData[disease];
+                    if (diseaseData) {
+                        diagnosis = diseaseData;
+                    }
+                }
+
+                return {
+                    label: label.className,
+                    confidence: label.probability,
+                    name: diagnosis.name_hi,
+                    chemical: diagnosis.chemical,
+                    organic: diagnosis.organic
+                };
+            });
+            return results;
+        };
+
+        // --- मैसेज बॉक्स फंक्शन (Message Box Function) ---
+        function showMessage(text, type = 'info') {
+            messageBox.textContent = text;
+            messageBox.style.opacity = '1';
+            let bgColor = 'bg-blue-500';
+            if (type === 'error') bgColor = 'bg-red-500';
+            if (type === 'success') bgColor = 'bg-green-500';
+            if (type === 'warning') bgColor = 'bg-yellow-500';
+            messageBox.className = `fixed top-4 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl shadow-lg z-50 text-white transition-opacity duration-300 ${bgColor}`;
+            setTimeout(() => {
+                messageBox.style.opacity = '0';
+            }, 5000);
+        }
+
+        // --- मौसम की जानकारी की कार्यक्षमता (Manual Weather Functionality) ---
+        const fetchWeather = async () => {
+            const city = cleanCityName(cityInput.value);
+            if (!city) {
+                showMessage("कृपया एक शहर का नाम दर्ज करें।", "error");
+                return `कृपया एक शहर का नाम दर्ज करें।`;
+            }
+            weatherResult.innerHTML = `<div class="flex justify-center items-center"><div class="loader"></div></div>`;
+            
+            try {
+                const currentUrl = `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${API_KEY}&units=metric&lang=hi`;
+                const currentResponse = await fetch(currentUrl);
+                const currentData = await currentResponse.json();
+
+                if (currentData.cod !== 200) {
+                    throw new Error(currentData.message || "शहर नहीं मिला।");
+                }
+                
+                let currentHtml = `<p><strong>वर्तमान मौसम:</strong> ${city} का तापमान ${currentData.main.temp.toFixed(1)}°C है और मौसम ${currentData.weather[0].description} है।</p>`;
+
+                const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${city}&appid=${API_KEY}&units=metric&lang=hi`;
+                const forecastResponse = await fetch(forecastUrl);
+                const forecastData = await forecastResponse.json();
+                
+                if (forecastData.cod !== "200") {
+                    throw new Error(forecastData.message || "पूर्वानुमान उपलब्ध नहीं है।");
+                }
+
+                const forecastDays = {};
+                const today = new Date().toISOString().split('T')[0];
+
+                for (const item of forecastData.list) {
+                    const date = item.dt_txt.split(' ')[0];
+                    if (date > today) { 
+                        if (!forecastDays[date]) {
+                            forecastDays[date] = { temps: [], descs: [], count: 0 };
+                        }
+                        forecastDays[date].temps.push(item.main.temp);
+                        forecastDays[date].descs.push(item.weather[0].description);
+                    }
+                }
+                
+                let forecastHtml = '<strong>अगले 5 दिनों का पूर्वानुमान:</strong><ul class="list-disc list-inside">';
+                let count = 0;
+                
+                for (const date in forecastDays) {
+                    if (count < 5) {
+                        const dayData = forecastDays[date];
+                        const avgTemp = dayData.temps.reduce((a, b) => a + b, 0) / dayData.temps.length;
+                        
+                        const mostCommonDesc = dayData.descs.sort((a,b) =>
+                            dayData.descs.filter(v => v===a).length - dayData.descs.filter(v => v===b).length
+                        ).pop();
+                        
+                        const dateObj = new Date(date);
+                        const dayName = dateObj.toLocaleDateString('hi-IN', { weekday: 'long' });
+                        
+                        forecastHtml += `<li>${dayName}: औसत तापमान ${avgTemp.toFixed(1)}°C, मौसम ${mostCommonDesc} रहेगा।</li>`;
+                        count++;
+                    }
+                }
+                forecastHtml += '</ul>';
+
+                weatherResult.innerHTML = currentHtml + forecastHtml;
+                showMessage(`मौसम की जानकारी सफलतापूर्वक प्राप्त हुई।`, "success");
+                return `${currentData.weather[0].description} के साथ तापमान ${currentData.main.temp.toFixed(1)} डिग्री सेल्सियस है।`;
+
+            } catch (error) {
+                weatherResult.innerHTML = `<p class="text-red-500">त्रुटि: ${error.message}</p>`;
+                showMessage(`क्षमा करें, ${city} के लिए मौसम की जानकारी नहीं मिल सकी।`, "error");
+                return `क्षमा करें, ${city} के लिए मौसम की जानकारी नहीं मिल सकी।`;
+            }
+        };
+
+        // --- फसल सुझाव की कार्यक्षमता (Crop Recommendation Functionality) ---
+        const getCropAdvice = () => {
+            const key = `${soilType.value},${season.value}`;
+            const advice = cropRecommendations[key] || "इस मिट्टी और मौसम के लिए कोई जानकारी नहीं है।";
+            cropResult.innerHTML = `<p><strong>अनुशंसित फसलें:</strong> ${advice}</p>`;
+            if (advice === "इस मिट्टी और मौसम के लिए कोई जानकारी नहीं है।") {
+                showMessage(advice, "warning");
+            } else {
+                showMessage("फसल के सुझाव सफलतापूर्वक प्राप्त हुए।", "success");
+            }
+            return `आपकी मिट्टी और मौसम के लिए अनुशंसित फसलें हैं: ${advice}`;
+        };
+        
+        // --- खाद की जानकारी की कार्यक्षमता (Fertilizer Info Functionality) ---
+        const getFertilizerInfo = () => {
+            const cropName = cropNameInput.value.trim();
+            if (!cropName) {
+                showMessage("कृपया एक फसल का नाम दर्ज करें।", "error");
+                return "कृपया फसल का नाम बताएं।";
+            }
+            const info = fertilizerData[cropName] || `क्षमा करें, ${cropName} की खाद और पानी की जानकारी उपलब्ध नहीं है।`;
+            fertilizerResult.innerHTML = `<p>${info}</p>`;
+            if (info === `क्षमा करें, ${cropName} की खाद और पानी की जानकारी उपलब्ध नहीं है।`) {
+                showMessage(info, "warning");
+            } else {
+                showMessage("खाद की जानकारी सफलतापूर्वक प्राप्त हुई।", "success");
+            }
+            return info;
+        };
+        
+        const getSoilFertilizerInfo = () => {
+            return '';
+        };
+
+        // --- पौधे के निदान की कार्यक्षमता (Plant Diagnosis Functionality) ---
+        diagnoseBtn.addEventListener('click', async () => {
+            const file = plantPhotoInput.files[0];
+            if (!file) {
+                showMessage("कृपया निदान के लिए एक फोटो चुनें।", "error");
+                return;
+            }
+            
+            if (!mobilenetModel) {
+                 showMessage("AI मॉडल अभी लोड हो रहा है, कृपया प्रतीक्षा करें।", "warning");
+                 return;
+            }
+
+            diagnosisResult.innerHTML = `<div class="flex flex-col items-center justify-center space-y-4"><div class="loader"></div><p class="text-gray-600">निदान कर रहा हूँ...</p></div>`;
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const img = new Image();
+                    img.onload = async () => {
+                        const predictions = await mobilenetModel.classify(img, 3); // Get top 3 predictions
+                        const formattedResults = getDiagnosisFromLabels(predictions);
+
+                        let resultHtml = `<h3 class="font-bold text-green-800 mb-2">शीर्ष 3 निदान:</h3>`;
+                        
+                        if (formattedResults.length === 0) {
+                            resultHtml += `<p class="text-red-500">निदान के लिए कोई परिणाम नहीं मिला।</p>`;
+                            showMessage("निदान के लिए कोई परिणाम नहीं मिला।", "warning");
+                        } else {
+                            formattedResults.forEach((result, index) => {
+                                 const confidence = (result.confidence * 100).toFixed(2);
+                                 resultHtml += `
+                                    <div class="glass p-4 rounded-lg shadow-sm border border-gray-200 mb-2">
+                                         <p class="text-lg font-semibold text-green-800">${result.name}</p>
+                                         <p class="text-sm text-gray-600">आत्मविश्वास: ${confidence}%</p>
+                                         ${result.chemical ? `
+                                         <div class="bg-red-50 p-2 mt-2 rounded-lg">
+                                             <p class="font-bold text-red-700">रासायनिक समाधान:</p>
+                                             <p class="text-red-600 text-sm">${result.chemical}</p>
+                                         </div>` : ''}
+                                         ${result.organic ? `
+                                         <div class="bg-yellow-50 p-2 mt-1 rounded-lg">
+                                             <p class="font-bold text-yellow-700">जैविक समाधान:</p>
+                                             <p class="text-yellow-600 text-sm">${result.organic}</p>
+                                         </div>` : ''}
+                                    </div>
+                                 `;
+                            });
+                            // Save the top diagnosis to Firestore
+                            const topResult = formattedResults[0];
+                            if (topResult.name !== 'कोई बीमारी नहीं मिली') {
+                                 saveDiagnosisToFirestore({
+                                    name: topResult.name,
+                                    chemical: topResult.chemical,
+                                    organic: topResult.organic,
+                                    score: (topResult.confidence * 100).toFixed(2)
+                                });
+                            }
+                            showMessage("निदान सफलतापूर्वक प्राप्त हुआ!", "success");
+                        }
+                        diagnosisResult.innerHTML = resultHtml;
+                    };
+                    img.src = e.target.result;
+                } catch (error) {
+                    console.error("Diagnosis failed:", error);
+                    diagnosisResult.innerHTML = `<p class="text-red-500">निदान में त्रुटि हुई।</p>`;
+                    showMessage("निदान में त्रुटि हुई।", "error");
+                } finally {
+                    diagnosisResult.querySelector('.loader').remove();
+                }
+            };
+            reader.readAsDataURL(file);
+        });
+        
+        getCropCostBtn.addEventListener('click', () => {
+            showMessage("यह सुविधा इस संस्करण में उपलब्ध नहीं है।", "info");
+        });
+
+        // --- बाजार मूल्य की कार्यक्षमता (Market Price Functionality) ---
+        const getMarketPrices = () => {
+            const selectedCrop = marketCropSelect.value;
+            const city = cityInputMarket.value.trim();
+            if (!selectedCrop || !city) {
+                showMessage("कृपया एक फसल और शहर का नाम दर्ज करें।", "error");
+                return "कृपया एक फसल और शहर का नाम बताएं।";
+            }
+            
+            const cropPrices = marketPrices[selectedCrop];
+            if (!cropPrices) {
+                showMessage("इस फसल के लिए कोई मूल्य उपलब्ध नहीं है।", "error");
+                return `इस फसल के लिए कोई मूल्य उपलब्ध नहीं है।`;
+            }
+            
+            const cityToSearch = Object.keys(cropPrices).find(c => c.toLowerCase() === city.toLowerCase());
+            const price = cityToSearch ? cropPrices[cityToSearch] : null;
+
+            if (!price) {
+                showMessage(`क्षमा करें, ${city} के लिए ${selectedCrop} का मूल्य उपलब्ध नहीं है।`, "error");
+                return `क्षमा करें, ${city} के लिए ${selectedCrop} का मूल्य उपलब्ध नहीं है।`;
+            }
+            
+            marketPriceResult.innerHTML = `<p><strong>${selectedCrop} का नवीनतम बाजार मूल्य:</strong></p><ul class="mt-2 space-y-2">`;
+            marketPriceResult.innerHTML += `<li class="p-2 bg-green-50 rounded-lg shadow-sm"><strong>${cityToSearch}:</strong> ${price}</li>`;
+            marketPriceResult.innerHTML += `</ul>`;
+            showMessage("बाजार मूल्य सफलतापूर्वक प्राप्त हुआ!", "success");
+            return `${cityToSearch} में ${selectedCrop} का नवीनतम बाजार मूल्य ${price} है।`;
+        };
+
+        // --- बटन के लिए इवेंट श्रोता (Event Listeners for Buttons) ---
+        getWeatherBtn.addEventListener('click', () => {
+            fetchWeather();
+        });
+        getCropBtn.addEventListener('click', () => {
+            getCropAdvice();
+        });
+        getFertilizerBtn.addEventListener('click', () => {
+            getFertilizerInfo();
+        });
+        getMarketPriceBtn.addEventListener('click', () => {
+            getMarketPrices();
+        });
+
+        // --- वॉइस असिस्टेंट की कार्यक्षमता (Voice Assistant Functionality) ---
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition;
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'hi-IN';
+            recognition.continuous = false;
+        }
+
+        let conversationState = 'IDLE';
+
+        function speak(text, callback) {
+            speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'hi-IN';
+            utterance.onend = () => {
+                if (callback) {
+                    callback();
+                }
+            };
+            speechSynthesis.speak(utterance);
+        }
+        
+        function startListening() {
+            if (recognition) {
+                status.textContent = 'सुन रहा हूँ...';
+                status.style.opacity = '1';
+                assistantBtn.classList.add('assistant-btn-glow');
+                // The `onend` event is what triggers the next step, so we don't start listening here.
+                recognition.start();
+            }
+        }
+        
+        assistantBtn.addEventListener('click', () => {
+            if (!recognition) {
+                showMessage("क्षमा करें, आपका ब्राउज़र वॉइस रिकग्निशन का समर्थन नहीं करता है।", "error");
+                return;
+            }
+            conversationState = 'IDLE';
+            speak("नमस्ते, मैं आपका दोस्त हरित हूँ। आप मौसम, फसल, खाद, या बाजार मूल्य के बारे में क्या जानना चाहते हैं?", () => {
+                status.textContent = "बोलिए...";
+                startListening();
+            });
+        });
+
+        if (recognition) {
+            recognition.onresult = async (event) => {
+                const command = event.results[0][0].transcript.toLowerCase().replace(/[।|.,]/g, '').trim();
+                status.textContent = `आपने कहा: ${command}`;
+                
+                // Processing commands
+                let responseText = '';
+                let nextState = conversationState;
+
+                if (command.includes('शुरू करो') || command.includes('फिर से शुरू') || command.includes('वापस जाओ') || command.includes('रोक दो')) {
+                    responseText = "ठीक है, हम शुरू से शुरू करते हैं। आप मौसम, फसल, खाद, या बाजार मूल्य के बारे में क्या जानना चाहते हैं?";
+                    nextState = 'IDLE';
+                } else {
+                    switch (conversationState) {
+                        case 'IDLE':
+                            if (command.includes('मौसम')) {
+                                responseText = 'कृपया अपना शहर बताइए।';
+                                nextState = 'AWAITING_CITY';
+                            } else if (command.includes('फसल')) {
+                                responseText = 'आपकी मिट्टी का प्रकार क्या है?';
+                                nextState = 'AWAITING_SOIL';
+                            } else if (command.includes('खाद') || command.includes('खद') || command.includes('ख़ाद')) {
+                                responseText = 'कृपया फसल का नाम बताइए।';
+                                nextState = 'AWAITING_CROP_FOR_FERTILIZER';
+                            } else if (command.includes('बाजार') || command.includes('मंडी') || command.includes('मूल्य')) {
+                                responseText = 'कृपया फसल का नाम बताइए जिसका आप बाजार मूल्य जानना चाहते हैं।';
+                                nextState = 'AWAITING_MARKET_CROP';
+                            } else {
+                                responseText = 'मुझे समझ नहीं आया। कृपया फिर से प्रयास करें।';
+                                nextState = 'IDLE';
+                            }
+                            break;
+                        case 'AWAITING_CITY':
+                            cityInput.value = cleanCityName(command);
+                            responseText = await fetchWeather();
+                            nextState = 'IDLE';
+                            break;
+                        case 'AWAITING_CROP_FOR_FERTILIZER':
+                            cropNameInput.value = command;
+                            responseText = getFertilizerInfo();
+                            nextState = 'IDLE';
+                            break;
+                        case 'AWAITING_SOIL':
+                            const soilMap = { "काली": "काली", "जलोढ़": "जलोढ़", "लाल": "लाल", "लेटराइट": "लेटराइट" };
+                            const foundSoil = Object.keys(soilMap).find(s => command.includes(s));
+                            if (foundSoil) {
+                                soilType.value = soilMap[foundSoil];
+                                responseText = 'आपका मौसम कौन सा है?';
+                                nextState = 'AWAITING_SEASON';
+                            } else {
+                                responseText = 'मिट्टी का प्रकार समझ नहीं आया। कृपया फिर से प्रयास करें: काली, जलोढ़, लाल या लेटराइट?';
+                                nextState = 'AWAITING_SOIL';
+                            }
+                            break;
+                        case 'AWAITING_SEASON':
+                            const seasonMap = { "गर्मी": "गर्मी", "सर्दी": "सर्दी", "बरसात": "वर्षा", "बारिश": "वर्षा", "वर्षा": "वर्षा" };
+                            const foundSeason = Object.keys(seasonMap).find(s => command.includes(s));
+                            if (foundSeason) {
+                                season.value = seasonMap[foundSeason];
+                                responseText = getCropAdvice();
+                                nextState = 'IDLE';
+                            } else {
+                                responseText = 'मौसम समझ नहीं आया। कृपया फिर से प्रयास करें: गर्मी, सर्दी या वर्षा?';
+                                nextState = 'AWAITING_SEASON';
+                            }
+                            break;
+                        case 'AWAITING_MARKET_CROP':
+                            const marketCrops = Object.keys(marketPrices);
+                            const foundMarketCrop = marketCrops.find(c => command.includes(c.toLowerCase()));
+                            if (foundMarketCrop) {
+                                marketCropSelect.value = foundMarketCrop;
+                                responseText = 'कृपया अब शहर का नाम बताइए।';
+                                nextState = 'AWAITING_MARKET_CITY';
+                            } else {
+                                responseText = 'यह फसल उपलब्ध नहीं है। कृपया गेहूँ, धान, प्याज, टमाटर, आलू, कपास, सरसों, या सोयाबीन में से चुनें।';
+                                nextState = 'AWAITING_MARKET_CROP';
+                            }
+                            break;
+                        case 'AWAITING_MARKET_CITY':
+                            const cityToSearch = command;
+                            cityInputMarket.value = cityToSearch;
+                            responseText = getMarketPrices();
+                            nextState = 'IDLE';
+                            break;
+                    }
+                }
+                conversationState = nextState;
+                speak(responseText, () => {
+                    if (conversationState !== 'IDLE') {
+                        startListening();
+                    }
+                });
+            };
+            
+            recognition.onend = () => {
+                assistantBtn.classList.remove('assistant-btn-glow');
+                 if (conversationState === 'IDLE') {
+                    status.style.opacity = '0';
+                }
+            };
+
+            recognition.onerror = (event) => {
+                showMessage(`त्रुटि हुई: ${event.error}`, "error");
+                conversationState = 'IDLE';
+            };
+        }
+
+    </script>
+</body>
+</html>
